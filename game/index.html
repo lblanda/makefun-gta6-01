@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solara Bay — an open-world crime game</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a1428;
+    font-family: "Segoe UI", system-ui, sans-serif; color: #fff; user-select: none; }
+  #game-canvas { position: fixed; inset: 0; }
+  #game-canvas canvas { display: block; }
+  .hud { position: fixed; z-index: 5; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  #hud-top { top: 14px; left: 16px; display: flex; gap: 18px; align-items: center; font-size: 20px; font-weight: 700; }
+  #hud-cash { color: #2ecc40; }
+  #hud-health { width: 130px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid #fff3; border-radius: 6px; overflow: hidden; }
+  #hud-health-fill { height: 100%; width: 100%; background: #2ecc40; }
+  #hud-stars { font-size: 22px; letter-spacing: 2px; }
+  #hud-clock { font-size: 18px; color: #ffe9a8; }
+  #hud-objective { top: 14px; left: 50%; transform: translateX(-50%); max-width: 560px; text-align: center;
+    font-size: 17px; font-weight: 600; background: rgba(0,0,0,.45); padding: 8px 16px; border-radius: 8px; }
+  #hud-timer { top: 64px; left: 50%; transform: translateX(-50%); font-size: 26px; font-weight: 800; display: none; }
+  #hud-speed { bottom: 18px; right: 20px; font-size: 26px; font-weight: 800; display: none; }
+  #minimap { position: fixed; left: 16px; bottom: 16px; width: 180px; height: 180px; z-index: 5;
+    border: 2px solid rgba(255,255,255,.5); border-radius: 50%; background: rgba(0,0,0,.4); }
+  #hud-feed { left: 210px; bottom: 18px; width: 380px; display: flex; flex-direction: column; gap: 6px; }
+  .feed-msg { background: rgba(0,0,0,.55); padding: 7px 12px; border-radius: 6px; font-size: 15px;
+    border-left: 3px solid #ffd23f; transition: opacity .6s; }
+  .feed-msg.fade { opacity: 0; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; z-index: 5; pointer-events: none;
+    transform: translate(-50%,-50%); display: none; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
+  #crosshair::after { left: 0; top: 6px; width: 14px; height: 2px; }
+  #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .25s;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255,0,0,.55) 100%); }
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; background: rgba(4,10,24,.72); backdrop-filter: blur(3px); }
+  .overlay h1 { font-size: 64px; letter-spacing: 6px; color: #ffd23f; text-shadow: 0 4px 24px rgba(0,0,0,.9); }
+  .overlay h2 { font-size: 20px; font-weight: 400; color: #cfe8ff; margin: 8px 0 18px; }
+  .overlay p.story { max-width: 620px; font-size: 16px; line-height: 1.55; color: #e8e8e8; margin-bottom: 20px; }
+  .controls { display: grid; grid-template-columns: auto auto; gap: 4px 18px; font-size: 14px; color: #cfe8ff;
+    text-align: left; margin-bottom: 26px; background: rgba(255,255,255,.06); padding: 14px 22px; border-radius: 10px; }
+  .controls b { color: #ffd23f; font-weight: 700; }
+  .btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 700; color: #111;
+    background: #ffd23f; border: none; border-radius: 9px; padding: 13px 34px; margin: 4px; }
+  .btn:hover { background: #ffe27a; }
+  .btn.ghost { background: transparent; color: #fff; border: 2px solid #fff8; }
+  .btn.ghost:hover { background: rgba(255,255,255,.12); }
+  #pause, #end { display: none; }
+  #end-title { font-size: 72px; color: #ff4136; }
+  .hint { margin-top: 16px; font-size: 13px; color: #9fb3cc; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="game-canvas"></div>
+<div id="vignette"></div>
+<div id="crosshair"></div>
+
+<div class="hud" id="hud-top">
+  <span id="hud-cash">$100</span>
+  <div id="hud-health"><div id="hud-health-fill"></div></div>
+  <span id="hud-stars">☆☆☆☆☆</span>
+  <span id="hud-clock">10:00</span>
+</div>
+<div class="hud" id="hud-objective">Welcome to Solara Bay</div>
+<div class="hud" id="hud-timer"></div>
+<div class="hud" id="hud-speed"></div>
+<canvas id="minimap" width="180" height="180"></canvas>
+<div class="hud" id="hud-feed"></div>
+
+<div class="overlay" id="menu">
+  <h1>SOLARA BAY</h1>
+  <h2>An original open-world crime game — sun, sea, sirens and one last score.</h2>
+  <p class="story">You are Rook, a wheelman fresh off the bus in Solara Bay. The fixer Mara Voss
+  has five jobs for you — steal cars, run packages, outrun the whole Solara PD and pull the Big
+  Score at the Bay Bank. Explore the city on foot or behind the wheel, keep your head down when
+  the stars come out, and mind the beach: the ocean is beautiful, the cops are not.</p>
+  <div class="controls">
+    <span><b>W A S D</b></span><span>Move / drive</span>
+    <span><b>Mouse drag</b></span><span>Look around &nbsp;·&nbsp; <b>Wheel</b> zoom</span>
+    <span><b>Shift</b></span><span>Sprint / boost</span>
+    <span><b>Space</b></span><span>Jump / handbrake</span>
+    <span><b>E</b></span><span>Enter / exit car (steal it)</span>
+    <span><b>F</b></span><span>Punch &nbsp;·&nbsp; <b>Click / G</b> shoot</span>
+    <span><b>N</b></span><span>Start next job &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>Esc</b> pause</span>
+  </div>
+  <div>
+    <button class="btn" id="btn-start">Start new game</button>
+    <button class="btn ghost" id="btn-continue">Continue saved game</button>
+  </div>
+  <p class="hint">Progress saves automatically. Fully offline — no network requests, no downloads.</p>
+</div>
+
+<div class="overlay" id="pause">
+  <h1 style="font-size:48px">PAUSED</h1>
+  <p class="story">Solara Bay waits for no one. Well — right now it does.</p>
+  <button class="btn" id="btn-resume">Resume</button>
+</div>
+
+<div class="overlay" id="end">
+  <h1 id="end-title">BUSTED!</h1>
+  <p class="story" id="end-text"></p>
+  <button class="btn" id="btn-respawn">Back on the streets</button>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
